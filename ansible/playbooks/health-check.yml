@@ -1,0 +1,61 @@
+---
+- name: Health Check TodoApp
+  hosts: todoapp_servers
+  become: no
+  
+  tasks:
+    - name: Check application health endpoint
+      uri:
+        url: "http://localhost:8000/health/"
+        method: GET
+        status_code: 200
+      register: health_check
+      retries: 3
+      delay: 5
+    
+    - name: Check application main page
+      uri:
+        url: "http://localhost:8000/"
+        method: GET
+        status_code: 200
+      register: main_page_check
+      retries: 3
+      delay: 5
+    
+    - name: Check Docker containers
+      docker_container_info:
+        name: "{{ item }}"
+      register: container_info
+      loop:
+        - "{{ app_name }}_web_1"
+        - "{{ app_name }}_nginx_1"
+      ignore_errors: yes
+      become_user: "{{ app_user }}"
+    
+    - name: Check system resources
+      shell: |
+        echo "CPU Usage: $(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1)"
+        echo "Memory Usage: $(free | grep Mem | awk '{printf "%.2f%%", $3/$2 * 100.0}')"
+        echo "Disk Usage: $(df -h / | awk 'NR==2{printf "%s", $5}')"
+      register: system_resources
+    
+    - name: Check application logs for errors
+      shell: |
+        docker-compose -f {{ app_dir }}/docker-compose.prod.yml logs --tail=50 web | grep -i error | wc -l
+      register: error_count
+      become_user: "{{ app_user }}"
+    
+    - name: Display health check results
+      debug:
+        msg: |
+          Health Check Results:
+          - Health endpoint: {{ 'PASS' if health_check.status == 200 else 'FAIL' }}
+          - Main page: {{ 'PASS' if main_page_check.status == 200 else 'FAIL' }}
+          - Error count in logs: {{ error_count.stdout }}
+          - System resources:
+            {{ system_resources.stdout }}
+    
+    - name: Fail if health checks fail
+      fail:
+        msg: "Health checks failed. Application is not responding properly."
+      when: health_check.status != 200 or main_page_check.status != 200

@@ -1,0 +1,85 @@
+# Application Configuration
+app_name: todoapp
+app_user: ec2-user
+app_dir: /opt/todoapp
+git_repo: https://github.com/yourusername/django-todo-app.git
+git_branch: main
+
+# Django Configuration
+django_settings_module: todo_project.settings
+django_secret_key: "{{ vault_django_secret_key }}"
+django_debug: false
+django_allowed_hosts:
+  - "{{ alb_dns_name }}"
+  - "{{ domain_name | default('') }}"
+
+# Database Configuration
+db_engine: django.db.backends.postgresql
+db_name: "{{ vault_db_name }}"
+db_user: "{{ vault_db_user }}"
+db_password: "{{ vault_db_password }}"
+db_host: "{{ rds_endpoint }}"
+db_port: 5432
+
+# Redis Configuration
+redis_host: "{{ redis_endpoint }}"
+redis_port: 6379
+redis_db: 0
+
+# Static Files Configuration
+static_root: /opt/todoapp/staticfiles
+media_root: /opt/todoapp/media
+static_url: /static/
+media_url: /media/
+
+# Docker Configuration
+docker_compose_file: docker-compose.prod.yml
+docker_registry: ""
+docker_image_tag: "{{ git_commit_short | default('latest') }}"
+
+# Nginx Configuration
+nginx_user: nginx
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+nginx_gzip: true
+nginx_gzip_types:
+  - text/plain
+  - text/css
+  - text/xml
+  - text/javascript
+  - application/json
+  - application/javascript
+  - application/xml+rss
+  - application/atom+xml
+  - image/svg+xml
+
+# SSL Configuration
+ssl_enabled: false
+ssl_cert_path: /etc/nginx/ssl/cert.pem
+ssl_key_path: /etc/nginx/ssl/key.pem
+
+# Monitoring Configuration
+log_level: INFO
+log_file: /var/log/todoapp/django.log
+log_max_size: 10MB
+log_backup_count: 5
+
+# Backup Configuration
+backup_enabled: true
+backup_retention_days: 7
+backup_schedule: "0 2 * * *"  # Daily at 2 AM
+
+# Security Configuration
+fail2ban_enabled: true
+ufw_enabled: true
+ufw_rules:
+  - { port: 22, proto: tcp, src: 0.0.0.0/0 }
+  - { port: 80, proto: tcp, src: 0.0.0.0/0 }
+  - { port: 443, proto: tcp, src: 0.0.0.0/0 }
+
+# Performance Configuration
+django_workers: 3
+django_timeout: 120
+django_max_requests: 1000
+django_max_requests_jitter: 100

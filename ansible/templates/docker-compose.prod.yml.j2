@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  web:
+    image: {{ app_name }}:{{ docker_image_tag }}
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             gunicorn {{ django_settings_module }}.wsgi:application 
+             --bind 0.0.0.0:8000 
+             --workers {{ django_workers }} 
+             --timeout {{ django_timeout }} 
+             --max-requests {{ django_max_requests }} 
+             --max-requests-jitter {{ django_max_requests_jitter }}"
+    volumes:
+      - static_volume:{{ static_root }}
+      - media_volume:{{ media_root }}
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG={{ django_debug | lower }}
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      {% if ssl_enabled %}
+      - "443:443"
+      {% endif %}
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:{{ static_root }}:ro
+      - media_volume:{{ media_root }}:ro
+      {% if ssl_enabled %}
+      - {{ ssl_cert_path }}:{{ ssl_cert_path }}:ro
+      - {{ ssl_key_path }}:{{ ssl_key_path }}:ro
+      {% endif %}
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  static_volume:
+  media_volume:

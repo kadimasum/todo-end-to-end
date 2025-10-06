@@ -1,0 +1,254 @@
+---
+- name: Deploy TodoApp to Production
+  hosts: todoapp_servers
+  become: yes
+  serial: 1  # Deploy one server at a time for zero-downtime deployment
+  
+  vars:
+    deployment_id: "{{ ansible_date_time.epoch }}"
+    backup_dir: "/opt/backups/{{ deployment_id }}"
+    
+  pre_tasks:
+    - name: Create deployment backup directory
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+    
+    - name: Backup current application
+      synchronize:
+        src: "{{ app_dir }}/"
+        dest: "{{ backup_dir }}/"
+        delete: false
+        recursive: true
+      when: ansible_check_mode == false
+    
+    - name: Check if application is running
+      systemd:
+        name: "{{ app_name }}"
+        state: started
+      register: app_running
+      ignore_errors: yes
+
+  tasks:
+    - name: Update system packages
+      yum:
+        name: "*"
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+    
+    - name: Install required packages
+      yum:
+        name:
+          - git
+          - docker
+          - python3
+          - python3-pip
+          - htop
+          - vim
+          - curl
+          - wget
+        state: present
+      when: ansible_os_family == "RedHat"
+    
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+    
+    - name: Add user to docker group
+      user:
+        name: "{{ app_user }}"
+        groups: docker
+        append: yes
+    
+    - name: Install Docker Compose
+      get_url:
+        url: "https://github.com/docker/compose/releases/latest/download/docker-compose-{{ ansible_system }}-{{ ansible_architecture }}"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      when: not ansible_check_mode
+    
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+    
+    - name: Clone or update repository
+      git:
+        repo: "{{ git_repo }}"
+        dest: "{{ app_dir }}"
+        version: "{{ git_branch }}"
+        force: yes
+        update: yes
+      become_user: "{{ app_user }}"
+    
+    - name: Create environment file
+      template:
+        src: ../templates/.env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0600'
+      become_user: "{{ app_user }}"
+    
+    - name: Create production docker-compose file
+      template:
+        src: ../templates/docker-compose.prod.yml.j2
+        dest: "{{ app_dir }}/docker-compose.prod.yml"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+      become_user: "{{ app_user }}"
+    
+    - name: Create nginx configuration
+      template:
+        src: ../templates/nginx.conf.j2
+        dest: "{{ app_dir }}/nginx.conf"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+      become_user: "{{ app_user }}"
+    
+    - name: Create systemd service file
+      template:
+        src: ../templates/todoapp.service.j2
+        dest: /etc/systemd/system/{{ app_name }}.service
+        mode: '0644'
+      notify: reload systemd
+    
+    - name: Create log directory
+      file:
+        path: /var/log/{{ app_name }}
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+    
+    - name: Stop application service
+      systemd:
+        name: "{{ app_name }}"
+        state: stopped
+      when: app_running.changed == false
+    
+    - name: Remove old containers
+      docker_container:
+        name: "{{ item }}"
+        state: absent
+        force: yes
+      loop:
+        - "{{ app_name }}_web_1"
+        - "{{ app_name }}_nginx_1"
+      ignore_errors: yes
+      become_user: "{{ app_user }}"
+    
+    - name: Remove old images
+      docker_image:
+        name: "{{ app_name }}"
+        state: absent
+      ignore_errors: yes
+      become_user: "{{ app_user }}"
+    
+    - name: Build Docker image
+      docker_image:
+        name: "{{ app_name }}"
+        source: build
+        build:
+          path: "{{ app_dir }}"
+          dockerfile: Dockerfile
+        state: present
+      become_user: "{{ app_user }}"
+    
+    - name: Start application with Docker Compose
+      docker_compose:
+        project_src: "{{ app_dir }}"
+        files:
+          - docker-compose.prod.yml
+        state: present
+        recreate: always
+        remove_orphans: yes
+      become_user: "{{ app_user }}"
+    
+    - name: Wait for application to start
+      wait_for:
+        port: 8000
+        host: localhost
+        delay: 10
+        timeout: 60
+    
+    - name: Run database migrations
+      command: >
+        docker-compose -f {{ app_dir }}/docker-compose.prod.yml exec -T web
+        python manage.py migrate
+      become_user: "{{ app_user }}"
+      ignore_errors: yes
+    
+    - name: Collect static files
+      command: >
+        docker-compose -f {{ app_dir }}/docker-compose.prod.yml exec -T web
+        python manage.py collectstatic --noinput
+      become_user: "{{ app_user }}"
+      ignore_errors: yes
+    
+    - name: Create superuser (if not exists)
+      command: >
+        docker-compose -f {{ app_dir }}/docker-compose.prod.yml exec -T web
+        python manage.py shell -c "
+        from django.contrib.auth import get_user_model;
+        User = get_user_model();
+        if not User.objects.filter(username='admin').exists():
+            User.objects.create_superuser('admin', 'admin@example.com', 'admin123')
+        "
+      become_user: "{{ app_user }}"
+      ignore_errors: yes
+    
+    - name: Start application service
+      systemd:
+        name: "{{ app_name }}"
+        state: started
+        enabled: yes
+        daemon_reload: yes
+    
+    - name: Wait for application health check
+      uri:
+        url: "http://localhost:8000/health/"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 5
+    
+    - name: Verify application is running
+      uri:
+        url: "http://localhost:8000/"
+        method: GET
+        status_code: 200
+      retries: 3
+      delay: 5
+
+  post_tasks:
+    - name: Clean up old backups (keep last 5)
+      find:
+        paths: /opt/backups
+        patterns: "*"
+        age: 5
+      register: old_backups
+      when: ansible_check_mode == false
+    
+    - name: Remove old backup directories
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+      when: ansible_check_mode == false
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes

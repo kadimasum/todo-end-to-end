@@ -1,0 +1,76 @@
+---
+- name: Rollback TodoApp Deployment
+  hosts: todoapp_servers
+  become: yes
+  serial: 1
+  
+  vars:
+    rollback_to: "{{ rollback_backup_id | default('latest') }}"
+    
+  tasks:
+    - name: Find available backups
+      find:
+        paths: /opt/backups
+        patterns: "*"
+        file_type: directory
+      register: available_backups
+      when: rollback_to == 'latest'
+    
+    - name: Set rollback backup path
+      set_fact:
+        backup_path: "{{ '/opt/backups/' + rollback_to if rollback_to != 'latest' else (available_backups.files | sort(attribute='mtime') | last).path }}"
+      when: rollback_to == 'latest'
+    
+    - name: Set rollback backup path (specific backup)
+      set_fact:
+        backup_path: "/opt/backups/{{ rollback_to }}"
+      when: rollback_to != 'latest'
+    
+    - name: Verify backup exists
+      stat:
+        path: "{{ backup_path }}"
+      register: backup_stat
+      failed_when: not backup_stat.stat.exists
+    
+    - name: Stop application service
+      systemd:
+        name: "{{ app_name }}"
+        state: stopped
+    
+    - name: Create current state backup
+      synchronize:
+        src: "{{ app_dir }}/"
+        dest: "/opt/backups/rollback-{{ ansible_date_time.epoch }}/"
+        delete: false
+        recursive: true
+      when: ansible_check_mode == false
+    
+    - name: Restore application from backup
+      synchronize:
+        src: "{{ backup_path }}/"
+        dest: "{{ app_dir }}/"
+        delete: true
+        recursive: true
+      become_user: "{{ app_user }}"
+    
+    - name: Start application service
+      systemd:
+        name: "{{ app_name }}"
+        state: started
+        enabled: yes
+    
+    - name: Wait for application health check
+      uri:
+        url: "http://localhost:8000/health/"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 5
+    
+    - name: Verify rollback successful
+      uri:
+        url: "http://localhost:8000/"
+        method: GET
+        status_code: 200
+      retries: 3
+      delay: 5
