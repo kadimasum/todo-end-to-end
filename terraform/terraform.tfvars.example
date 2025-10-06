@@ -1,0 +1,33 @@
+# AWS Configuration
+aws_region = "us-west-2"
+environment = "production"
+
+# Project Configuration
+project_name = "todoapp"
+
+# Network Configuration
+vpc_cidr = "10.0.0.0/16"
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+
+# EC2 Configuration
+instance_type = "t3.medium"
+min_size = 1
+max_size = 3
+desired_capacity = 2
+
+# Database Configuration
+db_instance_class = "db.t3.micro"
+db_allocated_storage = 20
+db_max_allocated_storage = 100
+db_name = "todoapp"
+db_username = "todoapp"
+db_password = "your-secure-database-password"
+
+# Cache Configuration
+cache_node_type = "cache.t3.micro"
+
+# Application Configuration
+secret_key = "your-django-secret-key"
+domain_name = "your-domain.com"
+certificate_arn = "arn:aws:acm:us-west-2:123456789012:certificate/your-cert-id"
