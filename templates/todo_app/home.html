@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Welcome to TodoApp{% endblock %}
+
+{% block content %}
+<div class="hero-section text-center py-5">
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <h1 class="display-4 fw-bold text-primary mb-4">
+                    <i class="fas fa-tasks me-3"></i>Welcome to TodoApp
+                </h1>
+                <p class="lead mb-4">
+                    Organize your life with our beautiful and intuitive todo management system. 
+                    Stay productive, stay organized, and never miss a deadline again.
+                </p>
+                
+                {% if not user.is_authenticated %}
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{% url 'register' %}" class="btn btn-primary btn-lg me-md-2">
+                            <i class="fas fa-user-plus me-2"></i>Get Started
+                        </a>
+                        <a href="{% url 'login' %}" class="btn btn-outline-primary btn-lg">
+                            <i class="fas fa-sign-in-alt me-2"></i>Login
+                        </a>
+                    </div>
+                {% else %}
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-center">
+                        <a href="{% url 'dashboard' %}" class="btn btn-primary btn-lg me-md-2">
+                            <i class="fas fa-tachometer-alt me-2"></i>Go to Dashboard
+                        </a>
+                        <a href="{% url 'todo_list' %}" class="btn btn-outline-primary btn-lg">
+                            <i class="fas fa-list me-2"></i>View Todos
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="features-section py-5">
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center p-4">
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-check-circle text-success fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Easy Task Management</h5>
+                        <p class="card-text">
+                            Create, edit, and organize your tasks with our intuitive interface. 
+                            Mark tasks as complete with a simple click.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center p-4">
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-tags text-info fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Smart Categorization</h5>
+                        <p class="card-text">
+                            Organize your tasks with custom categories and color coding. 
+                            Find what you need quickly and efficiently.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4 mb-4">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body text-center p-4">
+                        <div class="feature-icon mb-3">
+                            <i class="fas fa-chart-line text-warning fa-3x"></i>
+                        </div>
+                        <h5 class="card-title">Progress Tracking</h5>
+                        <p class="card-text">
+                            Monitor your productivity with detailed statistics and progress tracking. 
+                            See how much you've accomplished.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CTA Section -->
+{% if not user.is_authenticated %}
+<div class="cta-section bg-primary text-white py-5">
+    <div class="container text-center">
+        <h2 class="mb-4">Ready to Get Organized?</h2>
+        <p class="lead mb-4">Join thousands of users who have transformed their productivity with TodoApp.</p>
+        <a href="{% url 'register' %}" class="btn btn-light btn-lg">
+            <i class="fas fa-rocket me-2"></i>Start Your Journey
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
